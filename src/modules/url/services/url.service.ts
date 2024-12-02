@@ -3,7 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CachingService } from '../../../common/caching/services/caching.service';
 import { Url } from '../../../schemas/url.schema';
-import { v4 as uuidv4 } from 'uuid';
+import { encode } from 'base62';
+import { customAlphabet } from 'nanoid';
 
 @Injectable()
 export class UrlService {
@@ -12,38 +13,44 @@ export class UrlService {
     private readonly redisCacheService: CachingService,
   ) {}
 
-  private base62Encode(): string {
-    return uuidv4(); // Replace with a Base62 encoding method if required
-  }
-
   getShortUrl(shortId: string): string {
     const host = process.env.HOST || 'localhost';
     const port = process.env.PORT || '3000';
     return `http://${host}:${port}/url/${shortId}`;
   }
 
-  async generateShortUrl(longUrl: string): Promise<string> {
+  async generateShortUrl(
+    longUrl: string,
+    expirationDate?: Date,
+  ): Promise<string> {
     const existingUrl = await this.urlModel.findOne({ longUrl });
 
     if (existingUrl) {
       return this.getShortUrl(existingUrl.shortId);
     }
 
-    const shortId = this.base62Encode();
+    const id = customAlphabet('1234567890', 18)();
+    const shortId = encode(id as unknown as number);
     const shortUrl = this.getShortUrl(shortId);
 
     const newUrl = new this.urlModel({
       longUrl,
       shortId,
+      expirationDate:
+        expirationDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     });
 
-    await newUrl.save();
-    await this.redisCacheService.set(shortId, longUrl);
-    return shortUrl;
+    try {
+      await newUrl.save();
+      await this.redisCacheService.set(shortId, longUrl);
+      return shortUrl;
+    } catch {
+      throw new Error('An error occurred while saving the URL');
+    }
   }
 
   async getLongUrl(shortId: string): Promise<string | null> {
-    let longUrl = await this.redisCacheService.get(shortId);
+    let longUrl = (await this.redisCacheService.get(shortId)) as string;
     if (!longUrl) {
       const url = await this.urlModel.findOne({ shortId });
       if (url) {
@@ -55,7 +62,11 @@ export class UrlService {
   }
 
   async getUrlInfo(shortId: string): Promise<Url | null> {
-    return this.urlModel.findOne({ shortId }).exec();
+    try {
+      return await this.urlModel.findOne({ shortId }).exec();
+    } catch {
+      throw new Error('An error occurred while retrieving URL info');
+    }
   }
 
   async deleteShortUrl(shortId: string): Promise<boolean> {
@@ -71,14 +82,18 @@ export class UrlService {
     shortId: string,
     newLongUrl: string,
   ): Promise<Url | null> {
-    const url = await this.urlModel
-      .findOneAndUpdate({ shortId }, { longUrl: newLongUrl }, { new: true })
-      .exec();
+    try {
+      const url = await this.urlModel
+        .findOneAndUpdate({ shortId }, { longUrl: newLongUrl }, { new: true })
+        .exec();
 
-    if (url) {
-      await this.redisCacheService.set(shortId, newLongUrl);
+      if (url) {
+        await this.redisCacheService.set(shortId, newLongUrl);
+      }
+
+      return url;
+    } catch {
+      throw new Error('An error occurred while updating the URL');
     }
-
-    return url;
   }
 }

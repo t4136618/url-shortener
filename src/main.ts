@@ -5,7 +5,6 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Set up Swagger
   const config = new DocumentBuilder()
     .setTitle('URL Shortener API')
     .setDescription('The API for shortening URLs')
@@ -13,8 +12,7 @@ async function bootstrap() {
     .addTag('urls')
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document); // 'api' is the URL where Swagger UI will be available
-
+  SwaggerModule.setup('api', app, document);
   await app.listen(3000);
 }
 

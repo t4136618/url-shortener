@@ -3,30 +3,52 @@ import * as winston from 'winston';
 
 @Injectable()
 export class LoggerService {
-  private logger = winston.createLogger({
-    level: process.env.LOG_LEVEL || 'debug',
-    defaultMeta: {
-      context: 'NestJS',
-      service: process.env.SERVICE_NAME || 'Unknown-Service',
-    },
-    format: winston.format.combine(
+  private logger: winston.Logger;
+
+  constructor() {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const format = winston.format.combine(
       winston.format.timestamp(),
       winston.format.splat(),
-      winston.format.colorize(),
-      winston.format.printf(
-        ({ level, message, context, timestamp }) =>
-          `${timestamp} [${context}] [Level]: ${level}: ${message}`,
-      ),
-    ),
-    transports: [new winston.transports.Console()],
-  });
+      winston.format.printf(({ level, message, context, timestamp }) => {
+        return `${timestamp} [${context || 'NestJS'}] [Level]: ${level}: ${message}`;
+      }),
+    );
 
-  private logMessage(level: string, message: string, ...meta: any[]): void {
-    this.logger[level](message, ...meta);
+    const jsonFormat = winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.json(),
+    );
+
+    this.logger = winston.createLogger({
+      level: process.env.LOG_LEVEL || 'debug',
+      defaultMeta: {
+        service: process.env.SERVICE_NAME || 'Unknown-Service',
+      },
+      format: isProduction ? jsonFormat : format,
+      transports: [
+        new winston.transports.Console(),
+        ...(isProduction
+          ? [
+              new winston.transports.File({
+                filename: 'error.log',
+                level: 'error',
+              }),
+            ]
+          : []),
+      ],
+    });
   }
 
-  error(message: string, ...meta: any[]): void {
-    this.logMessage('error', message, ...meta);
+  private logMessage(level: string, message: string, ...meta: any[]): void {
+    this.logger.log(level, message, { meta });
+  }
+
+  error(message: string, error?: Error, ...meta: any[]): void {
+    const errorDetails = error
+      ? { message: error.message, stack: error.stack }
+      : undefined;
+    this.logMessage('error', message, { error: errorDetails, ...meta });
   }
 
   log(message: string, ...meta: any[]): void {

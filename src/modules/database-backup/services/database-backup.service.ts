@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as path from 'path';
 import * as fs from 'fs-extra';
@@ -25,30 +25,56 @@ export class DatabaseBackupService {
       await this.createBackup();
       this.loggerService.log('Backup completed successfully.');
     } catch (error) {
-      this.loggerService.error('Backup failed.', error);
+      this.loggerService.error('Backup failed.', error.stack);
+      throw new InternalServerErrorException('Database backup failed');
     }
   }
 
-  async createBackup() {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-'); // Format timestamp
+  private async createBackup() {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupPath = path.join(this.backupDir, `backup-${timestamp}`);
 
-    await fs.ensureDir(this.backupDir);
+    try {
+      await fs.ensureDir(this.backupDir);
+    } catch (dirError) {
+      this.loggerService.error(
+        'Failed to ensure backup directory.',
+        dirError.stack,
+      );
+      throw new InternalServerErrorException(
+        'Backup directory creation failed',
+      );
+    }
+
+    const uri = `mongodb://${this.configService.databaseEnvs.username}:${this.configService.databaseEnvs.password}@${this.configService.databaseEnvs.host}:${this.configService.databaseEnvs.port}`;
 
     try {
+      await this.runBackup(uri, backupPath);
+    } catch (error) {
+      this.loggerService.error(
+        'Error during MongoDB backup creation.',
+        error.stack,
+      );
+      throw new InternalServerErrorException(
+        'Error during database backup creation',
+      );
+    }
+  }
+
+  private runBackup(uri: string, backupPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
       backup({
-        uri: `mongodb://${this.configService.databaseEnvs.username}:${this.configService.databaseEnvs.password}@${this.configService.databaseEnvs.host}:${this.configService.databaseEnvs.port}`, // Replace with your MongoDB URI
+        uri: uri,
         root: backupPath,
         callback: (err) => {
           if (err) {
-            throw new Error(`Backup failed: ${err.message}`);
+            reject(new Error(`Backup failed: ${err.message}`));
+          } else {
+            this.loggerService.log(`Backup saved at: ${backupPath}`);
+            resolve();
           }
-          this.loggerService.log(`Backup saved at: ${backupPath}`);
         },
       });
-    } catch (error) {
-      this.loggerService.error('Error while creating backup.', error);
-      throw error;
-    }
+    });
   }
 }

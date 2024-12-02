@@ -11,52 +11,66 @@ export class CachingService {
     private readonly logger: LoggerService,
     private readonly configService: ConfigService,
   ) {
-    logger.setContext(`${this.constructor.name}`);
+    this.logger.setContext(this.constructor.name);
   }
 
-  async get(key): Promise<any> {
+  async get<T>(key: string): Promise<T | null> {
     try {
-      this.logger.debug('Redis get key ' + key);
-
-      return await this.cache.get(key);
-    } catch {
-      this.logger.error('Redis failed to get key ' + key);
-
+      this.logger.debug(`Attempting to retrieve key from cache: ${key}`);
+      const result = await this.cache.get<T>(key);
+      this.logger.debug(
+        `Cache hit for key: ${key}. Value: ${this.safeStringify(result)}`,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Error retrieving key "${key}" from cache: ${error.message}`,
+      );
       return null;
     }
   }
 
-  async set(key, value, ttl?: number): Promise<void> {
+  async set<T>(key: string, value: T, ttl?: number): Promise<void> {
+    const computedTtl = ttl ?? this.configService.redisEnvs.ttl;
     try {
       this.logger.debug(
-        'Redis set key ' + key + ' with value: ' + JSON.stringify(value),
+        `Setting key in cache: ${key} -> Value: ${this.safeStringify(value)}, TTL: ${computedTtl}`,
       );
-
-      await this.cache.set(key, value, {
-        ttl: ttl ?? this.configService.redisEnvs.ttl,
-      } as any);
-    } catch {
-      this.logger.error('Redis failed to set key ' + key);
+      await this.cache.set(key, value, computedTtl);
+    } catch (error) {
+      this.logger.error(
+        `Error setting key "${key}" in cache: ${error.message}`,
+      );
     }
   }
 
-  async del(key): Promise<void> {
+  async del(key: string): Promise<void> {
     try {
-      this.logger.debug('Redis del key ' + key);
-
+      this.logger.debug(`Deleting key from cache: ${key}`);
       await this.cache.del(key);
-    } catch {
-      this.logger.error('Redis failed to del key ' + key);
+      this.logger.debug(`Key successfully deleted: ${key}`);
+    } catch (error) {
+      this.logger.error(
+        `Error deleting key "${key}" from cache: ${error.message}`,
+      );
     }
   }
 
   async clear(): Promise<void> {
     try {
-      this.logger.debug('Redis reset');
-
+      this.logger.debug(`Clearing all cache entries`);
       await this.cache.reset();
+      this.logger.debug(`Cache successfully cleared`);
+    } catch (error) {
+      this.logger.error(`Error clearing cache: ${error.message}`);
+    }
+  }
+
+  private safeStringify(value: any): string {
+    try {
+      return JSON.stringify(value);
     } catch {
-      this.logger.error('Redis reset failed');
+      return '[Unserializable value]';
     }
   }
 }
