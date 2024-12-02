@@ -1,14 +1,13 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { redisStore } from 'cache-manager-redis-store';
 import { CachingService } from './services/caching.service';
 import { ConfigService } from '../config/services/config.service';
 import { AppConfigModule } from '../config/config.module';
-import { LoggerModule } from '../logger/logger.module';
 
+@Global()
 @Module({
   imports: [
-    LoggerModule,
     AppConfigModule,
     CacheModule.registerAsync({
       imports: [AppConfigModule],

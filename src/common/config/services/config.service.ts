@@ -22,4 +22,20 @@ export class ConfigService {
   } {
     return this.configService.get('application.redisEnvs');
   }
+
+  get databaseEnvs(): {
+    host: string;
+    port: string;
+    username: string;
+    password: string;
+    schema: string;
+  } {
+    return {
+      host: this.configService.get('database.host'),
+      port: this.configService.get('database.port'),
+      username: this.configService.get('database.username'),
+      password: this.configService.get('database.password'),
+      schema: this.configService.get('database.schema'),
+    };
+  }
 }

@@ -1,11 +1,11 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import * as Joi from 'joi';
 import { ConfigService } from './services/config.service';
 import databaseConfig from './configs/database.config';
 import appConfig from './configs/app.config';
-import { LoggerModule } from '../logger/logger.module';
 
+@Global()
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -28,7 +28,6 @@ import { LoggerModule } from '../logger/logger.module';
         abortEarly: true,
       },
     }),
-    LoggerModule,
   ],
   providers: [ConfigService],
   exports: [ConfigService],
